@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Brain, Check, ClipboardPenLine, FileText, Lightbulb, Plus, Search, Sparkles, X } from "lucide-react";
+import { BookOpen, Brain, Check, ClipboardPenLine, FileText, Lightbulb, Plus, Search, Sparkles, Upload, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { BELIEF_STATUSES, EMPTY_DATA, LESSON_STATUSES, SOURCE_TYPES } from "@/lib/constants";
@@ -146,6 +146,7 @@ export default function Page() {
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const hydrated = useRef(false);
+  const researchFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -254,6 +255,31 @@ export default function Page() {
       setNotice(error instanceof Error ? `${error.message} Saved a local short summary instead.` : "AI failed. Saved a local short summary instead.");
     } finally {
       setBusy("");
+    }
+  }
+
+  async function uploadResearchFile(file: File) {
+    setBusy("research-file");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/ai/research/extract", {
+        method: "POST",
+        body: formData
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Could not read this file.");
+      setResearchDraft((draft) => ({
+        ...draft,
+        title: draft.title || payload.title_suggestion || draft.title,
+        raw_content: payload.extracted_text || draft.raw_content
+      }));
+      setNotice("File uploaded. Review extracted notes, then click Summarise and analyse.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "File upload failed.");
+    } finally {
+      setBusy("");
+      if (researchFileInputRef.current) researchFileInputRef.current.value = "";
     }
   }
 
@@ -568,6 +594,28 @@ export default function Page() {
                     <Field label="Source link"><TextInput value={researchDraft.source_link} onChange={(e) => setResearchDraft({ ...researchDraft, source_link: e.target.value })} /></Field>
                   </div>
                   <Field label="Research notes / raw archive"><TextArea value={researchDraft.raw_content} onChange={(e) => setResearchDraft({ ...researchDraft, raw_content: e.target.value })} /></Field>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      ref={researchFileInputRef}
+                      type="file"
+                      accept=".pdf,.txt,application/pdf,text/plain"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) uploadResearchFile(file);
+                      }}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={busy === "research-file"}
+                      onClick={() => researchFileInputRef.current?.click()}
+                    >
+                      <Upload className="h-4 w-4" />
+                      Upload PDF/TXT
+                    </Button>
+                    <p className="text-xs text-stone-600">AI summariser works from extracted text you can edit.</p>
+                  </div>
                   <div className="rounded-md border border-ocean/20 bg-ocean/10 p-3">
                     <Pill tone="ai">Draft suggestion</Pill>
                     <p className="mt-2 text-sm text-ocean">{researchDraft.summary_short || "AI summary will appear here and be stored for later compact retrieval."}</p>

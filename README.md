@@ -38,4 +38,9 @@ Without an OpenAI key, the app still saves raw entries and uses local short summ
 
 ## Database
 
-The Supabase starter schema is in `supabase/schema.sql`. The current MVP uses browser local storage so the core loop can be tested immediately, while the schema and typed models are ready for persistence/auth integration.
+The Supabase starter schema is in `supabase/schema.sql`.
+
+Phase 2 notes:
+- The app uses Supabase Auth email sign-in links.
+- Data is stored per authenticated user with RLS policies using `auth.uid() = user_id`.
+- In Supabase SQL Editor, run the full `supabase/schema.sql` script once before using the app.

@@ -1,14 +1,8 @@
 create extension if not exists pgcrypto;
 
-create table if not exists public.users (
-  id uuid primary key default gen_random_uuid(),
-  email text unique not null,
-  created_at timestamptz not null default now()
-);
-
 create table if not exists public.research_entries (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.users(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
   title text not null,
   source_type text not null check (source_type in ('article', 'book', 'quote', 'video', 'framework', 'note', 'other')),
   source_link text,
@@ -26,7 +20,7 @@ create table if not exists public.research_entries (
 
 create table if not exists public.lesson_ideas (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.users(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
   title text not null,
   raw_idea text not null,
   subject text,
@@ -39,13 +33,14 @@ create table if not exists public.lesson_ideas (
   student_instructions text,
   teacher_facilitation_notes jsonb not null default '[]'::jsonb,
   possible_assessment_evidence jsonb not null default '[]'::jsonb,
+  philosophy_connections jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create table if not exists public.reflection_entries (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.users(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
   title text not null,
   reflection_date date not null default current_date,
   class_context text,
@@ -55,6 +50,8 @@ create table if not exists public.reflection_entries (
   themes jsonb not null default '[]'::jsonb,
   tensions jsonb not null default '[]'::jsonb,
   possible_next_actions jsonb not null default '[]'::jsonb,
+  possible_beliefs jsonb not null default '[]'::jsonb,
+  unresolved_questions jsonb not null default '[]'::jsonb,
   linked_lesson_idea_id uuid references public.lesson_ideas(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -62,7 +59,7 @@ create table if not exists public.reflection_entries (
 
 create table if not exists public.belief_cards (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.users(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
   theme text not null,
   belief_statement text not null,
   teacher_edited_text text,
@@ -77,7 +74,7 @@ create table if not exists public.belief_cards (
 
 create table if not exists public.philosophy_documents (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.users(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
   title text not null,
   body text not null,
   generated_from_belief_ids jsonb not null default '[]'::jsonb,
@@ -89,36 +86,51 @@ create table if not exists public.philosophy_documents (
 
 create table if not exists public.tags (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.users(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
   created_at timestamptz not null default now(),
   unique (user_id, name)
 );
 
-create table if not exists public.entry_tags (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.users(id) on delete cascade,
-  tag_id uuid not null references public.tags(id) on delete cascade,
-  entry_type text not null check (entry_type in ('research', 'reflection', 'lesson_idea', 'belief')),
-  entry_id uuid not null,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.belief_links (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.users(id) on delete cascade,
-  belief_id uuid not null references public.belief_cards(id) on delete cascade,
-  linked_type text not null check (linked_type in ('research', 'reflection', 'lesson_idea')),
-  linked_id uuid not null,
-  created_at timestamptz not null default now()
-);
-
-alter table public.users enable row level security;
 alter table public.research_entries enable row level security;
 alter table public.lesson_ideas enable row level security;
 alter table public.reflection_entries enable row level security;
 alter table public.belief_cards enable row level security;
 alter table public.philosophy_documents enable row level security;
 alter table public.tags enable row level security;
-alter table public.entry_tags enable row level security;
-alter table public.belief_links enable row level security;
+
+drop policy if exists research_entries_owner on public.research_entries;
+create policy research_entries_owner on public.research_entries
+  for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists lesson_ideas_owner on public.lesson_ideas;
+create policy lesson_ideas_owner on public.lesson_ideas
+  for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists reflection_entries_owner on public.reflection_entries;
+create policy reflection_entries_owner on public.reflection_entries
+  for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists belief_cards_owner on public.belief_cards;
+create policy belief_cards_owner on public.belief_cards
+  for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists philosophy_documents_owner on public.philosophy_documents;
+create policy philosophy_documents_owner on public.philosophy_documents
+  for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists tags_owner on public.tags;
+create policy tags_owner on public.tags
+  for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);

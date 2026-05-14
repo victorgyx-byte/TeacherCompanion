@@ -1,10 +1,12 @@
 "use client";
 
 import { BookOpen, Brain, Check, ClipboardPenLine, FileText, Lightbulb, Plus, Search, Sparkles, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { BELIEF_STATUSES, DEMO_USER_ID, EMPTY_DATA, LESSON_STATUSES, SOURCE_TYPES } from "@/lib/constants";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
+import { BELIEF_STATUSES, EMPTY_DATA, LESSON_STATUSES, SOURCE_TYPES } from "@/lib/constants";
 import { buildCompactContextPack } from "@/lib/retrieval";
-import { loadAppData, saveAppData } from "@/lib/storage";
+import { loadUserData, syncUserData } from "@/lib/supabase-data";
+import { createBrowserSupabaseClient } from "@/lib/supabase";
 import { localSummary, makeId, nowIso, splitTags } from "@/lib/text";
 import type { AppData, BeliefCard, LessonIdea, LessonStatus, ReflectionEntry, ResearchEntry, SourceType } from "@/lib/types";
 
@@ -18,9 +20,9 @@ const tabs: Array<{ id: Tab; label: string; icon: React.ComponentType<{ classNam
   { id: "philosophy", label: "Teaching Philosophy", icon: FileText }
 ];
 
-const blankResearch = (): ResearchEntry => ({
+const blankResearch = (userId: string): ResearchEntry => ({
   id: makeId("research"),
-  user_id: DEMO_USER_ID,
+  user_id: userId,
   title: "",
   source_type: "article",
   source_link: "",
@@ -36,9 +38,9 @@ const blankResearch = (): ResearchEntry => ({
   updated_at: nowIso()
 });
 
-const blankLesson = (): LessonIdea => ({
+const blankLesson = (userId: string): LessonIdea => ({
   id: makeId("lesson"),
-  user_id: DEMO_USER_ID,
+  user_id: userId,
   title: "",
   raw_idea: "",
   subject: "",
@@ -56,9 +58,9 @@ const blankLesson = (): LessonIdea => ({
   updated_at: nowIso()
 });
 
-const blankReflection = (): ReflectionEntry => ({
+const blankReflection = (userId: string): ReflectionEntry => ({
   id: makeId("reflection"),
-  user_id: DEMO_USER_ID,
+  user_id: userId,
   title: "",
   reflection_date: new Date().toISOString().slice(0, 10),
   class_context: "",
@@ -128,18 +130,62 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 }
 
 export default function Page() {
+  const supabase = useMemo(() => createBrowserSupabaseClient(), []);
+  const [session, setSession] = useState<Session | null>(null);
+  const [email, setEmail] = useState("");
+  const [authBusy, setAuthBusy] = useState("");
+  const [authNotice, setAuthNotice] = useState("");
+  const userId = session?.user?.id ?? "";
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [data, setData] = useState<AppData>(EMPTY_DATA);
-  const [researchDraft, setResearchDraft] = useState<ResearchEntry>(blankResearch);
-  const [lessonDraft, setLessonDraft] = useState<LessonIdea>(blankLesson);
-  const [reflectionDraft, setReflectionDraft] = useState<ReflectionEntry>(blankReflection);
+  const [researchDraft, setResearchDraft] = useState<ResearchEntry>(blankResearch(userId));
+  const [lessonDraft, setLessonDraft] = useState<LessonIdea>(blankLesson(userId));
+  const [reflectionDraft, setReflectionDraft] = useState<ReflectionEntry>(blankReflection(userId));
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState("");
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
+  const hydrated = useRef(false);
 
-  useEffect(() => setData(loadAppData()), []);
-  useEffect(() => saveAppData(data), [data]);
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data: authData }) => {
+      setSession(authData.session);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!userId || !supabase) return;
+    setResearchDraft(blankResearch(userId));
+    setLessonDraft(blankLesson(userId));
+    setReflectionDraft(blankReflection(userId));
+  }, [userId, supabase]);
+
+  useEffect(() => {
+    if (!userId || !supabase) return;
+    loadUserData(supabase, userId)
+      .then((remoteData) => {
+        setData((current) => ({ ...current, ...remoteData }));
+        hydrated.current = true;
+      })
+      .catch((error) => {
+        setNotice(error instanceof Error ? `Could not load saved data: ${error.message}` : "Could not load saved data.");
+      });
+  }, [supabase, userId]);
+
+  useEffect(() => {
+    if (!supabase || !userId || !hydrated.current) return;
+    const timeout = window.setTimeout(() => {
+      syncUserData(supabase, data, userId).catch((error) => {
+        setNotice(error instanceof Error ? `Could not save to cloud: ${error.message}` : "Could not save to cloud.");
+      });
+    }, 600);
+    return () => window.clearTimeout(timeout);
+  }, [data, supabase, userId]);
 
   const allTags = useMemo(() => {
     const tags = new Set(data.tags);
@@ -161,7 +207,7 @@ export default function Page() {
   function addBeliefCards(statements: string[], source: BeliefCard["source_type"], sourceId: string, tags: string[] = [], evidence = "") {
     const cards = statements.filter(Boolean).map((statement, index) => ({
       id: makeId("belief"),
-      user_id: DEMO_USER_ID,
+      user_id: userId,
       theme: tags[index] ?? tags[0] ?? "pedagogy",
       belief_statement: statement,
       teacher_edited_text: statement,
@@ -207,7 +253,7 @@ export default function Page() {
     if (!researchDraft.title || !researchDraft.raw_content) return setNotice("Research entries need a title and notes.");
     const entry = { ...researchDraft, summary_short: researchDraft.summary_short || localSummary(researchDraft.raw_content), updated_at: nowIso() };
     updateData((current) => ({ ...current, researchEntries: [entry, ...current.researchEntries.filter((item) => item.id !== entry.id)] }));
-    setResearchDraft(blankResearch());
+    setResearchDraft(blankResearch(userId));
     setNotice("Research note saved.");
   }
 
@@ -239,7 +285,7 @@ export default function Page() {
     if (!lessonDraft.title || !lessonDraft.raw_idea) return setNotice("Lesson ideas need a title and idea text.");
     const idea = { ...lessonDraft, summary_short: lessonDraft.summary_short || localSummary(lessonDraft.raw_idea), updated_at: nowIso() };
     updateData((current) => ({ ...current, lessonIdeas: [idea, ...current.lessonIdeas.filter((item) => item.id !== idea.id)] }));
-    setLessonDraft(blankLesson());
+    setLessonDraft(blankLesson(userId));
     setNotice("Lesson idea saved.");
   }
 
@@ -289,7 +335,7 @@ export default function Page() {
     if (!reflectionDraft.title || !reflectionDraft.raw_reflection) return setNotice("Reflections need a title and reflection text.");
     const entry = { ...reflectionDraft, summary_short: reflectionDraft.summary_short || localSummary(reflectionDraft.raw_reflection), updated_at: nowIso() };
     updateData((current) => ({ ...current, reflectionEntries: [entry, ...current.reflectionEntries.filter((item) => item.id !== entry.id)] }));
-    setReflectionDraft(blankReflection());
+    setReflectionDraft(blankReflection(userId));
     setNotice("Reflection saved.");
   }
 
@@ -344,7 +390,7 @@ export default function Page() {
       });
       const doc = {
         id: makeId("philosophy"),
-        user_id: DEMO_USER_ID,
+        user_id: userId,
         title: `Teaching Philosophy v${data.philosophyDocuments.length + 1}`,
         body: ai.philosophy_statement,
         sections: ai.sections,
@@ -361,6 +407,55 @@ export default function Page() {
     } finally {
       setBusy("");
     }
+  }
+
+  async function signInWithEmailLink() {
+    if (!supabase) return setAuthNotice("Supabase is not configured yet.");
+    if (!email) return setAuthNotice("Enter your email first.");
+    setAuthBusy("signin");
+    const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
+    setAuthBusy("");
+    if (error) return setAuthNotice(error.message);
+    setAuthNotice("Check your email for the sign-in link.");
+  }
+
+  async function signOut() {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    hydrated.current = false;
+    setData(EMPTY_DATA);
+  }
+
+  if (!supabase) {
+    return (
+      <main className="mx-auto max-w-2xl p-6">
+        <section className="rounded-lg border border-stone-200 bg-paper p-6 shadow-soft">
+          <h1 className="text-2xl font-bold text-ink">Supabase Setup Needed</h1>
+          <p className="mt-2 text-sm text-stone-700">Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in your deployment environment, then reload.</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!session) {
+    return (
+      <main className="mx-auto max-w-2xl p-6">
+        <section className="rounded-lg border border-stone-200 bg-paper p-6 shadow-soft">
+          <h1 className="text-2xl font-bold text-ink">Sign In to Teacher Companion</h1>
+          <p className="mt-2 text-sm text-stone-700">Use your email and we’ll send a secure sign-in link.</p>
+          <div className="mt-4 grid gap-3">
+            <Field label="Email">
+              <TextInput type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@school.edu" />
+            </Field>
+            <Button onClick={signInWithEmailLink} disabled={authBusy === "signin"}>
+              Send sign-in link
+            </Button>
+            {authNotice ? <p className="text-sm text-ocean">{authNotice}</p> : null}
+          </div>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -403,6 +498,7 @@ export default function Page() {
               <Pill tone="ai">Suggested by AI is always labelled</Pill>
               <Pill tone="approved">{approvedBeliefs.length} approved beliefs</Pill>
               <Pill tone="warn">{pendingBeliefs.length} pending review</Pill>
+              <Button variant="ghost" onClick={signOut}>Sign out</Button>
             </div>
           </div>
 

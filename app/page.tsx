@@ -124,8 +124,13 @@ function Button({
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    const raw = await response.text();
+    throw new Error(`Server returned non-JSON response for ${url}. This usually means the deployment is outdated or the route failed to load.`);
+  }
   const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error ?? "Request failed.");
+  if (!response.ok) throw new Error(payload.error ?? `Request failed (${response.status}).`);
   return payload as T;
 }
 
@@ -267,6 +272,10 @@ export default function Page() {
         method: "POST",
         body: formData
       });
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        throw new Error("Upload endpoint returned non-JSON response. Please redeploy and try again.");
+      }
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Could not read this file.");
       setResearchDraft((draft) => ({

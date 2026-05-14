@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { PDFParse } from "pdf-parse";
+
+export const runtime = "nodejs";
 
 const MAX_EXTRACTED_CHARS = 20000;
 
@@ -20,6 +21,7 @@ export async function POST(request: Request) {
     let extractedText = "";
 
     if (mime.includes("pdf") || lowerName.endsWith(".pdf")) {
+      const { PDFParse } = await import("pdf-parse");
       const arrayBuffer = await file.arrayBuffer();
       const parser = new PDFParse({ data: Buffer.from(arrayBuffer) });
       const parsed = await parser.getText();

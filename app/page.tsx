@@ -469,46 +469,31 @@ export default function Page() {
   }
 
   return (
-    <main className="min-h-screen">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-5 md:flex-row md:px-6">
-        <aside className="md:sticky md:top-5 md:h-[calc(100vh-40px)] md:w-64">
-          <div className="rounded-lg border border-stone-200 bg-paper p-4 shadow-soft">
-            <div className="mb-5">
+    <main className="min-h-screen bg-linen/60 pb-24">
+      <div className="mx-auto w-full max-w-5xl px-4 py-4 md:px-6">
+        <header className="mb-4 rounded-2xl border border-stone-200 bg-paper px-4 py-4 shadow-soft">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
               <p className="text-xs font-semibold uppercase tracking-widest text-moss">Teacher Companion</p>
-              <h1 className="mt-2 text-2xl font-bold text-ink">Thinking space</h1>
+              <h1 className="text-2xl font-bold text-ink">Thinking space</h1>
+              <p className="text-sm text-moss">AI drafts, organises, and questions. You remain the author.</p>
             </div>
-            <nav className="grid gap-1">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-semibold ${activeTab === tab.id ? "bg-ink text-white" : "text-ink hover:bg-linen"}`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </nav>
-            <div className="mt-5 rounded-md bg-linen p-3 text-xs leading-5 text-stone-700">
-              Capture everything, summarise once, retrieve selectively, synthesise only when needed.
-            </div>
+            <Button variant="ghost" onClick={signOut}>Sign out</Button>
           </div>
-        </aside>
+          <div className="mt-3 rounded-md bg-linen p-3 text-xs leading-5 text-stone-700">
+            Capture everything, summarise once, retrieve selectively, synthesise only when needed.
+          </div>
+        </header>
 
-        <section className="min-w-0 flex-1">
+        <section className="min-w-0">
           <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-sm text-moss">AI drafts, organises, and questions. You remain the author.</p>
               <h2 className="text-3xl font-bold text-ink">{tabs.find((tab) => tab.id === activeTab)?.label}</h2>
             </div>
             <div className="flex flex-wrap gap-2">
               <Pill tone="ai">Suggested by AI is always labelled</Pill>
               <Pill tone="approved">{approvedBeliefs.length} approved beliefs</Pill>
               <Pill tone="warn">{pendingBeliefs.length} pending review</Pill>
-              <Button variant="ghost" onClick={signOut}>Sign out</Button>
             </div>
           </div>
 
@@ -784,6 +769,24 @@ export default function Page() {
           )}
         </section>
       </div>
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-stone-200 bg-paper/95 backdrop-blur">
+        <div className="mx-auto grid w-full max-w-5xl grid-cols-5 gap-1 px-2 py-2">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-semibold transition ${isActive ? "bg-ink text-white" : "text-stone-600 hover:bg-linen"}`}
+              >
+                <Icon className="h-4 w-4" />
+                <span className="leading-none">{tab.id === "philosophy" ? "Philosophy" : tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </main>
   );
 }

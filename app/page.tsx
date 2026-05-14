@@ -278,12 +278,35 @@ export default function Page() {
       }
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Could not read this file.");
+
+      const extractedText = String(payload.extracted_text ?? "").trim();
+      const titleSuggestion = String(payload.title_suggestion ?? "").trim();
+      const nextTitle = (researchDraft.title || titleSuggestion || "Uploaded research note").trim();
+
+      let summaryPatch: Partial<ResearchEntry> = {};
+      let uploadNotice = "File uploaded and summarised.";
+      try {
+        const ai = await postJson<Partial<ResearchEntry>>("/api/ai/research/summary", {
+          title: nextTitle,
+          raw_content: extractedText,
+          teacher_note: researchDraft.teacher_response
+        });
+        summaryPatch = ai;
+      } catch (error) {
+        summaryPatch = { summary_short: localSummary(extractedText) };
+        uploadNotice = error instanceof Error
+          ? `File uploaded. AI summary failed: ${error.message} Saved a local short summary instead.`
+          : "File uploaded. AI summary failed. Saved a local short summary instead.";
+      }
+
       setResearchDraft((draft) => ({
         ...draft,
-        title: draft.title || payload.title_suggestion || draft.title,
-        raw_content: payload.extracted_text || draft.raw_content
+        title: draft.title || titleSuggestion || "Uploaded research note",
+        raw_content: extractedText || draft.raw_content,
+        ...summaryPatch,
+        updated_at: nowIso()
       }));
-      setNotice("File uploaded. Review extracted notes, then click Summarise and analyse.");
+      setNotice(uploadNotice);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "File upload failed.");
     } finally {
@@ -617,7 +640,7 @@ export default function Page() {
                     <Button
                       type="button"
                       variant="secondary"
-                      disabled={busy === "research-file"}
+                      disabled={busy === "research-file" || busy === "research-summary"}
                       onClick={() => researchFileInputRef.current?.click()}
                     >
                       <Upload className="h-4 w-4" />
@@ -631,7 +654,7 @@ export default function Page() {
                   </div>
                   <Field label="Your response"><TextArea value={researchDraft.teacher_response} onChange={(e) => setResearchDraft({ ...researchDraft, teacher_response: e.target.value })} placeholder="What do I agree with? What feels unresolved? How might this change my teaching?" /></Field>
                   <div className="flex flex-wrap gap-2">
-                    <Button onClick={summariseResearch} disabled={busy === "research-summary"}><Sparkles className="h-4 w-4" />Summarise and analyse</Button>
+                    <Button onClick={summariseResearch} disabled={busy === "research-summary" || busy === "research-file"}><Sparkles className="h-4 w-4" />Summarise and analyse</Button>
                     <Button onClick={saveResearch} variant="secondary"><Check className="h-4 w-4" />Save raw entry</Button>
                   </div>
                 </div>

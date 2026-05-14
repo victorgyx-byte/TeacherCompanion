@@ -132,7 +132,6 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 export default function Page() {
   const supabase = useMemo(() => createBrowserSupabaseClient(), []);
   const [session, setSession] = useState<Session | null>(null);
-  const [email, setEmail] = useState("");
   const [authBusy, setAuthBusy] = useState("");
   const [authNotice, setAuthNotice] = useState("");
   const userId = session?.user?.id ?? "";
@@ -419,15 +418,16 @@ export default function Page() {
     }
   }
 
-  async function signInWithEmailLink() {
+  async function signInWithGoogle() {
     if (!supabase) return setAuthNotice("Supabase is not configured yet.");
-    if (!email) return setAuthNotice("Enter your email first.");
-    setAuthBusy("signin");
+    setAuthBusy("google");
     const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo }
+    });
     setAuthBusy("");
     if (error) return setAuthNotice(error.message);
-    setAuthNotice("Check your email for the sign-in link.");
   }
 
   async function signOut() {
@@ -453,13 +453,10 @@ export default function Page() {
       <main className="mx-auto max-w-2xl p-6">
         <section className="rounded-lg border border-stone-200 bg-paper p-6 shadow-soft">
           <h1 className="text-2xl font-bold text-ink">Sign In to Teacher Companion</h1>
-          <p className="mt-2 text-sm text-stone-700">Use your email and we’ll send a secure sign-in link.</p>
+          <p className="mt-2 text-sm text-stone-700">Continue with your Google account.</p>
           <div className="mt-4 grid gap-3">
-            <Field label="Email">
-              <TextInput type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@school.edu" />
-            </Field>
-            <Button onClick={signInWithEmailLink} disabled={authBusy === "signin"}>
-              Send sign-in link
+            <Button onClick={signInWithGoogle} disabled={authBusy === "google"}>
+              Continue with Google
             </Button>
             {authNotice ? <p className="text-sm text-ocean">{authNotice}</p> : null}
           </div>

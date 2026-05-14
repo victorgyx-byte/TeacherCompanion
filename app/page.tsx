@@ -262,6 +262,10 @@ export default function Page() {
       created_at: nowIso(),
       updated_at: nowIso()
     }));
+    if (!cards.length) {
+      setNotice("No clear belief statements were detected yet. Add a fuller teacher response, then try again.");
+      return;
+    }
     updateData((current) => ({ ...current, beliefCards: [...cards, ...current.beliefCards] }));
     setNotice(`${cards.length} draft belief card${cards.length === 1 ? "" : "s"} added for review.`);
   }

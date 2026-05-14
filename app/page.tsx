@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Brain, Check, ClipboardPenLine, FileText, Lightbulb, Plus, Search, Sparkles, Upload, X } from "lucide-react";
+import { BookOpen, Brain, Check, ClipboardPenLine, Download, ExternalLink, FileText, Lightbulb, Plus, Search, Sparkles, Upload, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { BELIEF_STATUSES, EMPTY_DATA, LESSON_STATUSES, SOURCE_TYPES } from "@/lib/constants";
@@ -102,6 +102,21 @@ function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
 
 function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea {...props} className={`min-h-28 rounded-md border border-stone-200 bg-white px-3 py-2 outline-none focus:border-moss ${props.className ?? ""}`} />;
+}
+
+function normalizeSourceUrl(raw?: string) {
+  const value = (raw ?? "").trim();
+  if (!value) return "";
+  const candidates = [value, `https://${value}`];
+  for (const candidate of candidates) {
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") return parsed.toString();
+    } catch {
+      continue;
+    }
+  }
+  return "";
 }
 
 function Button({
@@ -206,6 +221,7 @@ export default function Page() {
   const approvedBeliefs = data.beliefCards.filter((belief) => belief.status === "approved");
   const unresolvedBeliefs = data.beliefCards.filter((belief) => belief.status === "unresolved");
   const selectedResearchEntry = data.researchEntries.find((entry) => entry.id === selectedResearchId) ?? null;
+  const selectedResearchSourceUrl = normalizeSourceUrl(selectedResearchEntry?.source_link);
 
   function updateData(updater: (current: AppData) => AppData) {
     setData((current) => updater(current));
@@ -613,7 +629,7 @@ export default function Page() {
           )}
 
           {activeTab === "research" && (
-            <div className="grid gap-4 xl:grid-cols-[420px_320px_1fr]">
+            <div className="grid gap-4 xl:grid-cols-[420px_1fr] 2xl:grid-cols-[420px_320px_1fr]">
               <Panel title="Create research entry">
                 <div className="grid gap-3">
                   <Field label="Title"><TextInput value={researchDraft.title} onChange={(e) => setResearchDraft({ ...researchDraft, title: e.target.value })} /></Field>
@@ -623,7 +639,7 @@ export default function Page() {
                         {SOURCE_TYPES.map((type) => <option key={type}>{type}</option>)}
                       </select>
                     </Field>
-                    <Field label="Source link"><TextInput value={researchDraft.source_link} onChange={(e) => setResearchDraft({ ...researchDraft, source_link: e.target.value })} /></Field>
+                    <Field label="Source link"><TextInput value={researchDraft.source_link} onChange={(e) => setResearchDraft({ ...researchDraft, source_link: e.target.value })} placeholder="https://example.com/research.pdf" /></Field>
                   </div>
                   <Field label="Research notes / raw archive"><TextArea value={researchDraft.raw_content} onChange={(e) => setResearchDraft({ ...researchDraft, raw_content: e.target.value })} /></Field>
                   <div className="flex flex-wrap items-center gap-2">
@@ -679,12 +695,12 @@ export default function Page() {
                   {!data.researchEntries.length && <EmptyState text="No research notes yet. Add one to start the loop." />}
                 </div>
               </Panel>
-              <Panel title="Selected research detail">
+              <Panel title="Selected research detail" className="xl:col-span-2 2xl:col-span-1">
                 {selectedResearchEntry ? (
                   <article className="rounded-md border border-stone-200 bg-white p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <h3 className="text-lg font-bold">{selectedResearchEntry.title}</h3>
+                        <h3 className="break-words text-lg font-bold leading-tight">{selectedResearchEntry.title}</h3>
                       </div>
                       <Pill>{selectedResearchEntry.source_type}</Pill>
                     </div>
@@ -692,6 +708,37 @@ export default function Page() {
                       <p className="text-sm font-semibold text-ocean">Summary (Suggested by AI)</p>
                       <p className="mt-1 text-sm text-ocean">{selectedResearchEntry.summary_short || "No summary yet. Run Summarise and analyse."}</p>
                     </div>
+                    {selectedResearchEntry.source_link ? (
+                      <div className="mt-3 rounded-md border border-stone-200 bg-stone-50 p-3">
+                        <p className="text-sm font-semibold text-ink">Original source</p>
+                        <p className="mt-1 break-all text-xs text-stone-600">{selectedResearchEntry.source_link}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {selectedResearchSourceUrl ? (
+                            <>
+                              <a
+                                href={selectedResearchSourceUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-ink hover:border-moss"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                                Open source link
+                              </a>
+                              <a
+                                href={selectedResearchSourceUrl}
+                                download
+                                className="inline-flex items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-ink hover:border-moss"
+                              >
+                                <Download className="h-4 w-4" />
+                                Download source
+                              </a>
+                            </>
+                          ) : (
+                            <p className="text-xs text-clay">Source link format looks invalid. Please edit the link in the entry form.</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
                     <List title="Key ideas" items={selectedResearchEntry.key_ideas} />
                     <List title="Teaching implications" items={selectedResearchEntry.teaching_implications} />
                     <div className="mt-3">

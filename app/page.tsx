@@ -471,17 +471,10 @@ export default function Page() {
   return (
     <main className="min-h-screen bg-linen/60 pb-24">
       <div className="mx-auto w-full max-w-5xl px-4 py-4 md:px-6">
-        <header className="mb-4 rounded-2xl border border-stone-200 bg-paper px-4 py-4 shadow-soft">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-moss">Teacher Companion</p>
-              <h1 className="text-2xl font-bold text-ink">Thinking space</h1>
-              <p className="text-sm text-moss">AI drafts, organises, and questions. You remain the author.</p>
-            </div>
-            <Button variant="ghost" onClick={signOut}>Sign out</Button>
-          </div>
-          <div className="mt-3 rounded-md bg-linen p-3 text-xs leading-5 text-stone-700">
-            Capture everything, summarise once, retrieve selectively, synthesise only when needed.
+        <header className="mb-4 rounded-xl border border-stone-200 bg-paper px-4 py-3 shadow-soft">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-base font-semibold text-ink">Teachers Companion</h1>
+            <Button variant="ghost" onClick={signOut} className="px-2 py-1 text-xs">Sign out</Button>
           </div>
         </header>
 

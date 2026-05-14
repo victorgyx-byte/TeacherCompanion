@@ -685,18 +685,25 @@ export default function Page() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <h3 className="text-lg font-bold">{selectedResearchEntry.title}</h3>
-                        <p className="mt-1 text-sm text-stone-600">{selectedResearchEntry.summary_short}</p>
                       </div>
                       <Pill>{selectedResearchEntry.source_type}</Pill>
                     </div>
-                    <List title="Suggested by AI: key ideas" items={selectedResearchEntry.key_ideas} />
-                    <List title="Suggested by AI: implications" items={selectedResearchEntry.teaching_implications} />
+                    <div className="mt-3 rounded-md border border-ocean/20 bg-ocean/10 p-3">
+                      <p className="text-sm font-semibold text-ocean">Summary (Suggested by AI)</p>
+                      <p className="mt-1 text-sm text-ocean">{selectedResearchEntry.summary_short || "No summary yet. Run Summarise and analyse."}</p>
+                    </div>
+                    <List title="Key ideas" items={selectedResearchEntry.key_ideas} />
+                    <List title="Teaching implications" items={selectedResearchEntry.teaching_implications} />
                     <div className="mt-3">
                       <p className="text-sm font-semibold">Your response</p>
                       <TextArea
                         value={selectedResearchEntry.teacher_response}
                         onChange={(e) => updateResearchEntry(selectedResearchEntry.id, { teacher_response: e.target.value })}
                       />
+                    </div>
+                    <List title="Reflective questions" items={selectedResearchEntry.reflective_questions} />
+                    <div className="mt-3">
+                      <p className="text-sm font-semibold">Suggested tags</p>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {selectedResearchEntry.suggested_tags.map((tag) => <Pill key={tag}>{tag}</Pill>)}

@@ -21,12 +21,10 @@ export async function POST(request: Request) {
     let extractedText = "";
 
     if (mime.includes("pdf") || lowerName.endsWith(".pdf")) {
-      const { PDFParse } = await import("pdf-parse");
+      const { default: pdfParse } = await import("pdf-parse");
       const arrayBuffer = await file.arrayBuffer();
-      const parser = new PDFParse({ data: Buffer.from(arrayBuffer) });
-      const parsed = await parser.getText();
+      const parsed = await pdfParse(Buffer.from(arrayBuffer));
       extractedText = parsed.text ?? "";
-      await parser.destroy();
     } else if (mime.includes("text") || lowerName.endsWith(".txt")) {
       extractedText = await file.text();
     } else {

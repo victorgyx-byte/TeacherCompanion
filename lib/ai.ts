@@ -16,6 +16,97 @@ type JsonSchema<T extends z.ZodTypeAny> = {
   model?: string;
 };
 
+function extractStringFromUnknown(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return "";
+
+  const record = value as Record<string, unknown>;
+  const directKeys = ["text", "content", "value", "arguments", "output_text", "message"];
+  for (const key of directKeys) {
+    const candidate = record[key];
+    if (typeof candidate === "string") return candidate;
+    if (candidate && typeof candidate === "object") {
+      const nested = extractStringFromUnknown(candidate);
+      if (nested) return nested;
+    }
+  }
+
+  for (const candidate of Object.values(record)) {
+    const nested = extractStringFromUnknown(candidate);
+    if (nested) return nested;
+  }
+
+  return "";
+}
+
+function extractMessageText(content: unknown): string {
+  if (typeof content === "string") return content;
+
+  if (Array.isArray(content)) {
+    const parts = content
+      .map((part) => {
+        const extracted = extractStringFromUnknown(part);
+        return extracted.trim();
+      })
+      .filter(Boolean);
+    return parts.join("\n");
+  }
+
+  return extractStringFromUnknown(content);
+}
+
+function parseJsonContent(content: string) {
+  const trimmed = content.trim();
+  if (!trimmed) throw new AiError("AI returned empty text content.");
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // Continue with recovery strategies below.
+  }
+
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    try {
+      return JSON.parse(fenced[1].trim());
+    } catch {
+      // Continue with recovery strategies below.
+    }
+  }
+
+  const objectStart = trimmed.indexOf("{");
+  const objectEnd = trimmed.lastIndexOf("}");
+  if (objectStart >= 0 && objectEnd > objectStart) {
+    const candidate = trimmed.slice(objectStart, objectEnd + 1);
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // Continue with recovery strategies below.
+    }
+  }
+
+  const arrayStart = trimmed.indexOf("[");
+  const arrayEnd = trimmed.lastIndexOf("]");
+  if (arrayStart >= 0 && arrayEnd > arrayStart) {
+    const candidate = trimmed.slice(arrayStart, arrayEnd + 1);
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // Continue to final error below.
+    }
+  }
+
+  const preview = trimmed.slice(0, 180).replace(/\s+/g, " ");
+  throw new AiError(`AI returned unparsable JSON content. Preview: ${preview}`);
+}
+
+function describeValueShape(value: unknown): string {
+  if (Array.isArray(value)) return `array(${value.length})`;
+  if (value === null) return "null";
+  if (typeof value === "object") return `object(${Object.keys(value as Record<string, unknown>).join(",")})`;
+  return typeof value;
+}
+
 export async function generateJson<T extends z.ZodTypeAny>({ schema, system, user, model }: JsonSchema<T>): Promise<z.infer<T>> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new AiError("OpenAI API key is not configured.");
@@ -46,11 +137,21 @@ export async function generateJson<T extends z.ZodTypeAny>({ schema, system, use
 
   const payload = await response.json();
   const content = payload.choices?.[0]?.message?.content;
-  if (!content) throw new AiError("AI returned an empty response.");
+  const contentText = extractMessageText(content);
+  if (!contentText) {
+    throw new AiError(`AI returned no readable text content (shape: ${describeValueShape(content)}).`);
+  }
 
   try {
-    return schema.parse(JSON.parse(content));
-  } catch {
+    const parsed = parseJsonContent(contentText);
+    const validated = schema.safeParse(parsed);
+    if (!validated.success) {
+      const firstIssue = validated.error.issues[0];
+      throw new AiError(`AI JSON schema mismatch at "${firstIssue.path.join(".") || "root"}": ${firstIssue.message}`);
+    }
+    return validated.data;
+  } catch (error) {
+    if (error instanceof AiError) throw error;
     throw new AiError("AI returned JSON in an unexpected shape.");
   }
 }

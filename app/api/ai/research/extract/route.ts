@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     let extractedText = "";
 
     if (mime.includes("pdf") || lowerName.endsWith(".pdf")) {
-      const { default: pdfParse } = await import("pdf-parse");
+      const { default: pdfParse } = await import("pdf-parse/lib/pdf-parse.js");
       const arrayBuffer = await file.arrayBuffer();
       const parsed = await pdfParse(Buffer.from(arrayBuffer));
       extractedText = parsed.text ?? "";

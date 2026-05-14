@@ -139,6 +139,7 @@ export default function Page() {
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [data, setData] = useState<AppData>(EMPTY_DATA);
   const [researchDraft, setResearchDraft] = useState<ResearchEntry>(blankResearch(userId));
+  const [selectedResearchId, setSelectedResearchId] = useState<string>("");
   const [lessonDraft, setLessonDraft] = useState<LessonIdea>(blankLesson(userId));
   const [reflectionDraft, setReflectionDraft] = useState<ReflectionEntry>(blankReflection(userId));
   const [search, setSearch] = useState("");
@@ -199,9 +200,17 @@ export default function Page() {
   const pendingBeliefs = data.beliefCards.filter((belief) => belief.status === "suggested");
   const approvedBeliefs = data.beliefCards.filter((belief) => belief.status === "approved");
   const unresolvedBeliefs = data.beliefCards.filter((belief) => belief.status === "unresolved");
+  const selectedResearchEntry = data.researchEntries.find((entry) => entry.id === selectedResearchId) ?? null;
 
   function updateData(updater: (current: AppData) => AppData) {
     setData((current) => updater(current));
+  }
+
+  function updateResearchEntry(id: string, patch: Partial<ResearchEntry>) {
+    updateData((current) => ({
+      ...current,
+      researchEntries: current.researchEntries.map((item) => (item.id === id ? { ...item, ...patch, updated_at: nowIso() } : item))
+    }));
   }
 
   function addBeliefCards(statements: string[], source: BeliefCard["source_type"], sourceId: string, tags: string[] = [], evidence = "") {
@@ -253,6 +262,7 @@ export default function Page() {
     if (!researchDraft.title || !researchDraft.raw_content) return setNotice("Research entries need a title and notes.");
     const entry = { ...researchDraft, summary_short: researchDraft.summary_short || localSummary(researchDraft.raw_content), updated_at: nowIso() };
     updateData((current) => ({ ...current, researchEntries: [entry, ...current.researchEntries.filter((item) => item.id !== entry.id)] }));
+    setSelectedResearchId(entry.id);
     setResearchDraft(blankResearch(userId));
     setNotice("Research note saved.");
   }
@@ -570,7 +580,7 @@ export default function Page() {
           )}
 
           {activeTab === "research" && (
-            <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
+            <div className="grid gap-4 xl:grid-cols-[420px_320px_1fr]">
               <Panel title="Create research entry">
                 <div className="grid gap-3">
                   <Field label="Title"><TextInput value={researchDraft.title} onChange={(e) => setResearchDraft({ ...researchDraft, title: e.target.value })} /></Field>
@@ -597,30 +607,55 @@ export default function Page() {
               <Panel title="Research library">
                 <div className="grid gap-3">
                   {filtered(data.researchEntries).map((entry) => (
-                    <article key={entry.id} className="rounded-md border border-stone-200 bg-white p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <h3 className="text-lg font-bold">{entry.title}</h3>
-                          <p className="mt-1 text-sm text-stone-600">{entry.summary_short}</p>
+                    <button
+                      key={entry.id}
+                      onClick={() => setSelectedResearchId(entry.id)}
+                      className={`rounded-md border bg-white p-4 text-left ${selectedResearchId === entry.id ? "border-ink ring-2 ring-ink/15" : "border-stone-200 hover:border-moss"}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="truncate text-base font-bold">{entry.title}</h3>
+                          <p className="mt-1 line-clamp-3 text-sm text-stone-600">{entry.summary_short || localSummary(entry.raw_content)}</p>
                         </div>
                         <Pill>{entry.source_type}</Pill>
                       </div>
-                      <List title="Suggested by AI: key ideas" items={entry.key_ideas} />
-                      <List title="Suggested by AI: implications" items={entry.teaching_implications} />
-                      <div className="mt-3">
-                        <p className="text-sm font-semibold">Your response</p>
-                        <TextArea value={entry.teacher_response} onChange={(e) => updateData((current) => ({ ...current, researchEntries: current.researchEntries.map((item) => item.id === entry.id ? { ...item, teacher_response: e.target.value, updated_at: nowIso() } : item) }))} />
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {entry.suggested_tags.map((tag) => <Pill key={tag}>{tag}</Pill>)}
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Button onClick={() => analyseResearchResponse(entry)} disabled={busy === entry.id}><Sparkles className="h-4 w-4" />Create belief cards from my response</Button>
-                      </div>
-                    </article>
+                    </button>
                   ))}
                   {!data.researchEntries.length && <EmptyState text="No research notes yet. Add one to start the loop." />}
                 </div>
+              </Panel>
+              <Panel title="Selected research detail">
+                {selectedResearchEntry ? (
+                  <article className="rounded-md border border-stone-200 bg-white p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-bold">{selectedResearchEntry.title}</h3>
+                        <p className="mt-1 text-sm text-stone-600">{selectedResearchEntry.summary_short}</p>
+                      </div>
+                      <Pill>{selectedResearchEntry.source_type}</Pill>
+                    </div>
+                    <List title="Suggested by AI: key ideas" items={selectedResearchEntry.key_ideas} />
+                    <List title="Suggested by AI: implications" items={selectedResearchEntry.teaching_implications} />
+                    <div className="mt-3">
+                      <p className="text-sm font-semibold">Your response</p>
+                      <TextArea
+                        value={selectedResearchEntry.teacher_response}
+                        onChange={(e) => updateResearchEntry(selectedResearchEntry.id, { teacher_response: e.target.value })}
+                      />
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {selectedResearchEntry.suggested_tags.map((tag) => <Pill key={tag}>{tag}</Pill>)}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button onClick={() => analyseResearchResponse(selectedResearchEntry)} disabled={busy === selectedResearchEntry.id}>
+                        <Sparkles className="h-4 w-4" />
+                        Create belief cards from my response
+                      </Button>
+                    </div>
+                  </article>
+                ) : (
+                  <EmptyState text="Select a research note from the library to open it here." />
+                )}
               </Panel>
             </div>
           )}

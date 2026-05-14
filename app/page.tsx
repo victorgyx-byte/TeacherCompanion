@@ -12,6 +12,12 @@ import type { AppData, BeliefCard, LessonIdea, LessonStatus, ReflectionEntry, Re
 
 type Tab = "home" | "research" | "lessons" | "reflections" | "philosophy";
 
+type BeliefGenerationMeta = {
+  fallback_used: boolean;
+  fallback_mode: string;
+  fallback_reason?: string;
+};
+
 const tabs: Array<{ id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: "home", label: "Home", icon: Brain },
   { id: "research", label: "Research", icon: BookOpen },
@@ -165,6 +171,7 @@ export default function Page() {
   const [tagFilter, setTagFilter] = useState("");
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
+  const [researchBeliefMetaByEntry, setResearchBeliefMetaByEntry] = useState<Record<string, BeliefGenerationMeta>>({});
   const hydrated = useRef(false);
   const researchFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -235,6 +242,7 @@ export default function Page() {
   const unresolvedBeliefs = data.beliefCards.filter((belief) => belief.status === "unresolved");
   const selectedResearchEntry = data.researchEntries.find((entry) => entry.id === selectedResearchId) ?? null;
   const selectedResearchSourceUrl = normalizeSourceUrl(selectedResearchEntry?.source_link);
+  const selectedResearchBeliefMeta = selectedResearchEntry ? researchBeliefMetaByEntry[selectedResearchEntry.id] : undefined;
 
   function updateData(updater: (current: AppData) => AppData) {
     setData((current) => updater(current));
@@ -362,11 +370,20 @@ export default function Page() {
     setBusy(entry.id);
     try {
       const compactContext = buildCompactContextPack(data, "research_response", entry.teacher_response, entry.suggested_tags);
-      const ai = await postJson<{ possible_beliefs: string[]; tensions: string[]; unresolved_questions: string[]; suggested_tags: string[] }>("/api/ai/research/response", {
+      const ai = await postJson<{
+        possible_beliefs: string[];
+        tensions: string[];
+        unresolved_questions: string[];
+        suggested_tags: string[];
+        generation_meta?: BeliefGenerationMeta;
+      }>("/api/ai/research/response", {
         teacher_response: entry.teacher_response,
         research_summary: entry.summary_short,
         existing_approved_beliefs: compactContext.relevant_approved_beliefs
       });
+      if (ai.generation_meta) {
+        setResearchBeliefMetaByEntry((current) => ({ ...current, [entry.id]: ai.generation_meta as BeliefGenerationMeta }));
+      }
       addBeliefCards(ai.possible_beliefs, "research", entry.id, ai.suggested_tags, entry.summary_short);
       updateData((current) => ({
         ...current,
@@ -374,6 +391,12 @@ export default function Page() {
           item.id === entry.id ? { ...item, suggested_tags: [...new Set([...item.suggested_tags, ...ai.suggested_tags])], updated_at: nowIso() } : item
         )
       }));
+      if (ai.generation_meta?.fallback_used && ai.possible_beliefs.length) {
+        const label = ai.generation_meta.fallback_mode.replaceAll("_", " ");
+        setNotice(
+          `${ai.possible_beliefs.length} draft belief card${ai.possible_beliefs.length === 1 ? "" : "s"} added using fallback mode (${label}).`
+        );
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Could not analyse the response.");
     } finally {
@@ -778,6 +801,19 @@ export default function Page() {
                         Create belief cards from my response
                       </Button>
                     </div>
+                    {selectedResearchBeliefMeta ? (
+                      <div className="mt-2 rounded-md border border-stone-200 bg-stone-50 p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Pill tone={selectedResearchBeliefMeta.fallback_used ? "warn" : "ai"}>
+                            {selectedResearchBeliefMeta.fallback_used ? "Fallback mode used" : "Standard AI extraction"}
+                          </Pill>
+                          <p className="text-xs text-stone-600">{selectedResearchBeliefMeta.fallback_mode.replaceAll("_", " ")}</p>
+                        </div>
+                        {selectedResearchBeliefMeta.fallback_reason ? (
+                          <p className="mt-2 text-xs text-stone-600">{selectedResearchBeliefMeta.fallback_reason}</p>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </article>
                 ) : (
                   <EmptyState text="Select a research note from the library to open it here." />

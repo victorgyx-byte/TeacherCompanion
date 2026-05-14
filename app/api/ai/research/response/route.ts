@@ -104,6 +104,9 @@ export async function POST(request: Request) {
     }
     let raw: Record<string, unknown> = {};
     let aiPrimarySucceeded = false;
+    let fallbackUsed = false;
+    let fallbackMode = "none";
+    let fallbackReason = "";
     try {
       const rawJson = await generateJson({
         schema: ANY_JSON_SCHEMA,
@@ -117,7 +120,7 @@ export async function POST(request: Request) {
       });
       raw = rawJson && typeof rawJson === "object" ? (rawJson as Record<string, unknown>) : {};
       aiPrimarySucceeded = true;
-    } catch {
+    } catch (error) {
       // Graceful fallback: preserve flow even when AI JSON is malformed once.
       raw = {
         possible_beliefs: heuristicBeliefsFromResponse(body.teacher_response),
@@ -125,6 +128,9 @@ export async function POST(request: Request) {
         unresolved_questions: [],
         suggested_tags: []
       };
+      fallbackUsed = true;
+      fallbackMode = "primary_error_heuristic";
+      fallbackReason = error instanceof Error ? error.message : "Primary AI parse failed.";
     }
 
     let possibleBeliefs = toStringArray(
@@ -137,32 +143,45 @@ export async function POST(request: Request) {
 
     // Fallback pass: if the first response has no usable belief statements, force a tight beliefs-only extraction.
     if (!possibleBeliefs.length && aiPrimarySucceeded) {
-      const fallbackRaw = await generateJson({
-        schema: ANY_JSON_SCHEMA,
-        system:
-          "Extract 3 to 6 draft teacher belief statements from the teacher response only. Return concise first-person beliefs.",
-        user: {
-          teacher_response: body.teacher_response,
-          research_summary: body.research_summary ?? ""
-        },
-        model: process.env.OPENAI_SUMMARY_MODEL
-      });
-      const fallback = FALLBACK_BELIEF_SCHEMA.safeParse(fallbackRaw);
-      if (fallback.success) {
-        possibleBeliefs = toStringArray(fallback.data.possible_beliefs);
-      } else {
-        const fallbackObject = fallbackRaw && typeof fallbackRaw === "object" ? (fallbackRaw as Record<string, unknown>) : {};
-        possibleBeliefs = toStringArray(
-          fallbackObject.possible_beliefs ??
-          fallbackObject.possibleBeliefs ??
-          fallbackObject.beliefs ??
-          fallbackObject.key_beliefs ??
-          fallbackObject.candidate_beliefs
-        );
+      fallbackUsed = true;
+      fallbackMode = "secondary_belief_pass";
+      fallbackReason = "Primary output had no usable belief list.";
+      try {
+        const fallbackRaw = await generateJson({
+          schema: ANY_JSON_SCHEMA,
+          system:
+            "Extract 3 to 6 draft teacher belief statements from the teacher response only. Return concise first-person beliefs.",
+          user: {
+            teacher_response: body.teacher_response,
+            research_summary: body.research_summary ?? ""
+          },
+          model: process.env.OPENAI_SUMMARY_MODEL
+        });
+        const fallback = FALLBACK_BELIEF_SCHEMA.safeParse(fallbackRaw);
+        if (fallback.success) {
+          possibleBeliefs = toStringArray(fallback.data.possible_beliefs);
+        } else {
+          const fallbackObject = fallbackRaw && typeof fallbackRaw === "object" ? (fallbackRaw as Record<string, unknown>) : {};
+          possibleBeliefs = toStringArray(
+            fallbackObject.possible_beliefs ??
+            fallbackObject.possibleBeliefs ??
+            fallbackObject.beliefs ??
+            fallbackObject.key_beliefs ??
+            fallbackObject.candidate_beliefs
+          );
+        }
+      } catch (error) {
+        fallbackMode = "secondary_error_heuristic";
+        fallbackReason = error instanceof Error ? error.message : "Secondary AI belief extraction failed.";
       }
     }
 
     if (!possibleBeliefs.length) {
+      if (!fallbackUsed) {
+        fallbackUsed = true;
+        fallbackMode = "final_heuristic";
+        fallbackReason = "AI output did not provide beliefs. Heuristic extraction used.";
+      }
       possibleBeliefs = heuristicBeliefsFromResponse(body.teacher_response);
     }
 
@@ -173,7 +192,14 @@ export async function POST(request: Request) {
       suggested_tags: toStringArray(raw.suggested_tags ?? raw.suggestedTags ?? raw.tags).slice(0, 8)
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...result,
+      generation_meta: {
+        fallback_used: fallbackUsed,
+        fallback_mode: fallbackMode,
+        fallback_reason: fallbackReason
+      }
+    });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "AI response analysis failed." }, { status: 500 });
   }

@@ -208,6 +208,19 @@ export default function Page() {
     return () => window.clearTimeout(timeout);
   }, [data, supabase, userId]);
 
+  useEffect(() => {
+    if (!data.researchEntries.length) {
+      setSelectedResearchId("");
+      return;
+    }
+    if (!selectedResearchId) {
+      setSelectedResearchId(data.researchEntries[0].id);
+      return;
+    }
+    const stillExists = data.researchEntries.some((entry) => entry.id === selectedResearchId);
+    if (!stillExists) setSelectedResearchId(data.researchEntries[0].id);
+  }, [data.researchEntries, selectedResearchId]);
+
   const allTags = useMemo(() => {
     const tags = new Set(data.tags);
     data.researchEntries.forEach((entry) => entry.suggested_tags.forEach((tag) => tags.add(tag)));
@@ -681,12 +694,12 @@ export default function Page() {
                     <button
                       key={entry.id}
                       onClick={() => setSelectedResearchId(entry.id)}
-                      className={`rounded-md border bg-white p-4 text-left ${selectedResearchId === entry.id ? "border-ink ring-2 ring-ink/15" : "border-stone-200 hover:border-moss"}`}
+                      className={`w-full min-w-0 overflow-hidden rounded-md border bg-white p-4 text-left ${selectedResearchId === entry.id ? "border-ink ring-2 ring-ink/15" : "border-stone-200 hover:border-moss"}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <h3 className="truncate text-base font-bold">{entry.title}</h3>
-                          <p className="mt-1 line-clamp-3 text-sm text-stone-600">{entry.summary_short || localSummary(entry.raw_content)}</p>
+                          <h3 className="line-clamp-2 break-words text-base font-bold leading-tight">{entry.title}</h3>
+                          <p className="mt-1 line-clamp-3 break-words text-sm text-stone-600">{entry.summary_short || localSummary(entry.raw_content)}</p>
                         </div>
                         <Pill>{entry.source_type}</Pill>
                       </div>
